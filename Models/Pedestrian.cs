@@ -1,49 +1,62 @@
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 
 namespace Task3_2.Models
 {
     public class Pedestrian
     {
-        private static readonly Random _random = new Random();
+        private readonly Random _random = new Random();
+        private readonly CrossingModel _crossing;
         
-        public double X { get; set; }
-        public double Y { get; set; }
-        public double Speed { get; set; }
-        public bool IsWaiting { get; set; }
-        public bool IsCrossing { get; set; }
+        public double X { get; private set; }
+        public double Y { get; private set; }
+        
+        private bool _movingDown;
+        private readonly double _speed;
+        private bool _isWaiting;
 
-        public Pedestrian(double x, double y)
+        public Pedestrian(CrossingModel crossing)
         {
-            X = x;
-            Y = y;
-            Speed = _random.NextDouble() * 0.7 + 0.3; // Скорость от 0.3 до 1.0
-            IsWaiting = true;
-            IsCrossing = false;
+            _crossing = crossing;
+            _speed = _random.Next(1, 3);
+            _movingDown = _random.Next(0, 2) == 0;
+            
+            Y = _movingDown ? _crossing.RoadY - 20 : _crossing.RoadY + _crossing.RoadHeight + 5;
+            X = _crossing.CrossingX + _random.Next(0, (int)_crossing.CrossingWidth);
+            
+            // Пешеход ждет, если для пешеходов горит красный
+            _isWaiting = _crossing.TrafficLight.CurrentState == TrafficLight.LightState.RedForPedestrian;
         }
 
-        public void Update(TrafficLight trafficLight, double roadY, double roadHeight)
+        public void Update()
         {
-            // Если свет зеленый для пешеходов, начинаем пересекать дорогу
-            if (trafficLight.CurrentState == TrafficLight.LightState.GreenForPedestrian && IsWaiting)
+            // Пешеходы идут на зеленый для пешеходов, стоят на красный
+            if (_crossing.TrafficLight.CurrentState == TrafficLight.LightState.GreenForPedestrian)
             {
-                IsWaiting = false;
-                IsCrossing = true;
+                _isWaiting = false;
+            }
+            else if (IsOnCrossing())
+            {
+                // Если пешеход уже на переходе и загорелся красный для пешеходов - он должен ждать
+                _isWaiting = true;
             }
 
-            // Если пешеход переходит дорогу
-            if (IsCrossing)
+            if (!_isWaiting)
             {
-                Y += Speed;
+                Y += _movingDown ? _speed : -_speed;
                 
-                // Если пешеход перешел дорогу
-                if (Y > roadY + roadHeight)
+                if (Y < 0 || Y > 450)
                 {
-                    IsCrossing = false;
+                    _crossing.RemovePedestrian(this);
                 }
             }
+        }
+
+        private bool IsOnCrossing()
+        {
+            return X >= _crossing.CrossingX && 
+                   X <= _crossing.CrossingX + _crossing.CrossingWidth &&
+                   Y >= _crossing.RoadY && 
+                   Y <= _crossing.RoadY + _crossing.RoadHeight;
         }
     }
 }

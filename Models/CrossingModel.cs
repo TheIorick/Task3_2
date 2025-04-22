@@ -1,162 +1,126 @@
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using System.Collections.ObjectModel;
-using System.Threading;
+using System.Timers;
 
 namespace Task3_2.Models
 {
-    public class CrossingModel
+    public class CrossingModel : IDisposable
     {
-        private readonly Random _random = new Random();
-        private readonly object _lockObject = new object();
-        private CancellationTokenSource _cancellationTokenSource;
+        // Параметры модели остаются без изменений
+        public double CrossingX { get; } = 350;
+        public double CrossingWidth { get; } = 80;
+        public double RoadY { get; } = 200;
+        public double RoadHeight { get; } = 100;
         
         public TrafficLight TrafficLight { get; }
+        
+        private readonly Timer _updateTimer;
+        private readonly Timer _carSpawnTimer;
+        private readonly Timer _pedestrianSpawnTimer;
+        
         public ObservableCollection<Car> Cars { get; }
         public ObservableCollection<Pedestrian> Pedestrians { get; }
-        public IEmergencyService EmergencyService { get; }
         
-        public double CrossingX { get; } = 300;
-        public double CrossingWidth { get; } = 50;
-        public double RoadY { get; } = 150;
-        public double RoadHeight { get; } = 100;
+        private readonly Random _random = new Random();
         
         public event EventHandler<Car> AccidentOccurred;
 
         public CrossingModel()
         {
             TrafficLight = new TrafficLight();
+            
             Cars = new ObservableCollection<Car>();
             Pedestrians = new ObservableCollection<Pedestrian>();
-            EmergencyService = new EmergencyService();
             
-            _cancellationTokenSource = new CancellationTokenSource();
+            _updateTimer = new Timer(50);
+            _updateTimer.Elapsed += UpdateObjects;
+            _updateTimer.AutoReset = true;
+            _updateTimer.Start();
             
-            // Подписываемся на событие изменения состояния светофора
-            TrafficLight.StateChanged += OnTrafficLightStateChanged;
+            _carSpawnTimer = new Timer(2000);
+            _carSpawnTimer.Elapsed += SpawnCar;
+            _carSpawnTimer.AutoReset = true;
+            _carSpawnTimer.Start();
             
-            // Запускаем фоновый поток для генерации машин
-            Task.Run(() => GenerateCarsAsync(_cancellationTokenSource.Token));
-            
-            // Запускаем фоновый поток для генерации пешеходов
-            Task.Run(() => GeneratePedestriansAsync(_cancellationTokenSource.Token));
-            
-            // Запускаем фоновый поток для обновления моделей
-            Task.Run(() => UpdateModelsAsync(_cancellationTokenSource.Token));
-            
-            // Запускаем светофор
-            TrafficLight.Start();
+            _pedestrianSpawnTimer = new Timer(3000);
+            _pedestrianSpawnTimer.Elapsed += SpawnPedestrian;
+            _pedestrianSpawnTimer.AutoReset = true;
+            _pedestrianSpawnTimer.Start();
         }
 
-        private async Task GenerateCarsAsync(CancellationToken cancellationToken)
+        private void UpdateObjects(object sender, ElapsedEventArgs e)
         {
-            while (!cancellationToken.IsCancellationRequested)
+            // Обновление светофора
+            TrafficLight.Update();
+            
+            // Безопасное обновление машин
+            for (int i = Cars.Count - 1; i >= 0; i--)
             {
-                // Создаем новую машину
-                var newCar = new Car(-50, RoadY + RoadHeight / 2);
-                
-                await Task.Delay(_random.Next(2000, 5000), cancellationToken);
-                
-                lock (_lockObject)
+                if (i < Cars.Count)
                 {
-                    Cars.Add(newCar);
+                    Cars[i].Update();
                 }
-                
-                // Удаляем машины, которые уехали за пределы экрана
-                RemoveOffscreenCars();
             }
-        }
-
-        private async Task GeneratePedestriansAsync(CancellationToken cancellationToken)
-        {
-            while (!cancellationToken.IsCancellationRequested)
+            
+            // Безопасное обновление пешеходов
+            for (int i = Pedestrians.Count - 1; i >= 0; i--)
             {
-                // Создаем нового пешехода
-                var newPedestrian = new Pedestrian(CrossingX + CrossingWidth / 2, RoadY - 10);
-                
-                await Task.Delay(_random.Next(3000, 8000), cancellationToken);
-                
-                lock (_lockObject)
+                if (i < Pedestrians.Count)
                 {
-                    Pedestrians.Add(newPedestrian);
-                }
-                
-                // Удаляем пешеходов, которые ушли за пределы экрана
-                RemoveOffscreenPedestrians();
-            }
-        }
-
-        private async Task UpdateModelsAsync(CancellationToken cancellationToken)
-        {
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                await Task.Delay(50, cancellationToken); // Обновление каждые 50 мс
-                
-                lock (_lockObject)
-                {
-                    // Обновление машин
-                    foreach (var car in Cars.ToList())
-                    {
-                        car.Move(TrafficLight, CrossingX, CrossingX + CrossingWidth);
-                        
-                        // Проверка на аварийную ситуацию
-                        if (car.CheckAccident(CrossingX, CrossingX + CrossingWidth))
-                        {
-                            AccidentOccurred?.Invoke(this, car);
-                            
-                            // Вызов аварийной службы
-                            Task.Run(() => EmergencyService.RespondToAccident(car.X, car.Y));
-                        }
-                    }
-                    
-                    // Обновление пешеходов
-                    foreach (var pedestrian in Pedestrians.ToList())
-                    {
-                        pedestrian.Update(TrafficLight, RoadY, RoadHeight);
-                    }
+                    Pedestrians[i].Update();
                 }
             }
         }
 
-        private void OnTrafficLightStateChanged(object sender, TrafficLight.LightState state)
+        private void SpawnCar(object sender, ElapsedEventArgs e)
         {
-            // Дополнительная логика при изменении состояния светофора
+            // Создаем обычную машину
+            bool isEmergency = _random.Next(0, 100) < 5; // Редкое появление аварийной службы в обычном режиме
+            var car = new Car(this, isEmergency);
+            Cars.Add(car);
         }
 
-        private void RemoveOffscreenCars()
+        private void SpawnPedestrian(object sender, ElapsedEventArgs e)
         {
-            lock (_lockObject)
+            var pedestrian = new Pedestrian(this);
+            Pedestrians.Add(pedestrian);
+        }
+
+        public void RemoveCar(Car car)
+        {
+            if (Cars.Contains(car))
             {
-                for (int i = Cars.Count - 1; i >= 0; i--)
-                {
-                    if (Cars[i].X > 800) // Ширина окна
-                    {
-                        Cars.RemoveAt(i);
-                    }
-                }
+                Cars.Remove(car);
             }
         }
 
-        private void RemoveOffscreenPedestrians()
+        public void RemovePedestrian(Pedestrian pedestrian)
         {
-            lock (_lockObject)
+            if (Pedestrians.Contains(pedestrian))
             {
-                for (int i = Pedestrians.Count - 1; i >= 0; i--)
-                {
-                    if (Pedestrians[i].Y > RoadY + RoadHeight + 50)
-                    {
-                        Pedestrians.RemoveAt(i);
-                    }
-                }
+                Pedestrians.Remove(pedestrian);
             }
         }
 
-        public void Stop()
+        public void TriggerAccident(Car car)
         {
-            _cancellationTokenSource.Cancel();
-            TrafficLight.Stop();
+            // Генерируем событие аварии
+            AccidentOccurred?.Invoke(this, car);
+            
+            // Создаем аварийную машину и добавляем ее на сцену
+            // Она появится с правой или левой стороны с более высокой скоростью
+            var emergencyCar = new Car(this, true);
+            Cars.Add(emergencyCar);
+        }
+
+        public void Dispose()
+        {
+            _updateTimer.Stop();
+            _updateTimer.Dispose();
+            _carSpawnTimer.Stop();
+            _carSpawnTimer.Dispose();
+            _pedestrianSpawnTimer.Stop();
+            _pedestrianSpawnTimer.Dispose();
         }
     }
 }

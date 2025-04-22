@@ -155,7 +155,12 @@ namespace Task3_2.Views
                 RadiusX = 5,
                 RadiusY = 5
             };
-            
+             if (car.IsEmergency)
+            {
+                // Делаем машину более заметной
+                rectangle.StrokeThickness = 2;
+                rectangle.Stroke = Brushes.Yellow;
+            }
             Canvas.SetLeft(rectangle, car.X);
             Canvas.SetTop(rectangle, car.Y);
             

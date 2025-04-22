@@ -1,8 +1,4 @@
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using System.Timers;
 
 namespace Task3_2.Models
 {
@@ -10,51 +6,44 @@ namespace Task3_2.Models
     {
         public enum LightState
         {
-            RedForPedestrian,
-            GreenForPedestrian
+            RedForPedestrian,      // Красный для пешеходов (зеленый для машин)
+            GreenForPedestrian     // Зеленый для пешеходов (красный для машин)
         }
 
-        private Timer _timer;
         private LightState _currentState;
+        private readonly Random _random = new Random();
+        private DateTime _lastStateChange;
+        
+        private readonly int _minStateTime = 8000;  // 8 секунд
+        private readonly int _maxStateTime = 12000; // 12 секунд
+        private int _currentStateDuration;
 
-        public LightState CurrentState
-        {
-            get => _currentState;
-            private set
-            {
-                if (_currentState != value)
-                {
-                    _currentState = value;
-                    StateChanged?.Invoke(this, _currentState);
-                }
-            }
-        }
-
+        public LightState CurrentState => _currentState;
+        
         public event EventHandler<LightState> StateChanged;
 
         public TrafficLight()
         {
-            _currentState = LightState.RedForPedestrian;
-            _timer = new Timer(5000); // 5 секунд для каждого состояния
-            _timer.Elapsed += OnTimerElapsed;
+            _currentState = LightState.GreenForPedestrian; // Начинаем с зеленого для пешеходов
+            _lastStateChange = DateTime.Now;
+            _currentStateDuration = _random.Next(_minStateTime, _maxStateTime);
         }
 
-        private void OnTimerElapsed(object sender, ElapsedEventArgs e)
+        public void Update()
         {
-            // Переключаем состояние светофора
-            CurrentState = CurrentState == LightState.RedForPedestrian 
-                ? LightState.GreenForPedestrian 
-                : LightState.RedForPedestrian;
-        }
-
-        public void Start()
-        {
-            _timer.Start();
-        }
-
-        public void Stop()
-        {
-            _timer.Stop();
+            if ((DateTime.Now - _lastStateChange).TotalMilliseconds >= _currentStateDuration)
+            {
+                // Меняем сигнал светофора
+                _currentState = _currentState == LightState.GreenForPedestrian 
+                    ? LightState.RedForPedestrian 
+                    : LightState.GreenForPedestrian;
+                    
+                _lastStateChange = DateTime.Now;
+                _currentStateDuration = _random.Next(_minStateTime, _maxStateTime);
+                
+                // Уведомляем подписчиков о смене сигнала
+                StateChanged?.Invoke(this, _currentState);
+            }
         }
     }
 }
